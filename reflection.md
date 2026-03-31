@@ -65,13 +65,25 @@ The original skeleton passed `available_minutes` as a separate argument to `Sche
 
 **a. Constraints and priorities**
 
-- What constraints does your scheduler consider (for example: time, priority, preferences)?
-- How did you decide which constraints mattered most?
+The scheduler considers four constraints:
+
+1. **Time budget** — the owner's `available_minutes` is the hard outer limit. No task is scheduled if it would exceed the remaining minutes. This is checked on every task via `fits_in_budget()`, and a second pass runs after the initial greedy sort to fill any leftover time with tasks that were initially skipped.
+
+2. **Priority and required status** — tasks are ranked by `is_required` first, then by `priority` level (high → medium → low), then by shortest duration. Required tasks are treated as non-negotiable: a required task will always be scheduled before any optional task of equal or lower priority.
+
+3. **Owner preferences** — the `avoid_category` preference in `owner.preferences` causes optional tasks in that category to be filtered out entirely before scheduling begins. A grooming-averse owner will never see optional grooming tasks in their plan, even if time allows.
+
+4. **Time of day (slot)** — tasks with a `time_of_day` value ("morning", "afternoon", "evening") sort before unslotted tasks, and morning slots sort before afternoon, which sorts before evening. This ensures the schedule reads in a natural daily order rather than purely by priority.
+
+The constraints were prioritized in this order — time, then required status, then priority, then slot — because they reflect real-world urgency. Running out of time is a hard physical constraint that cannot be worked around, so it governs everything. Within that limit, a pet's medical or safety needs (required tasks) matter more than convenience-based priorities set by the owner. Preferences like `avoid_category` come next because they reflect the owner's judgment about what is reasonable on a given day. Slot ordering is last because it is purely cosmetic — it affects readability of the schedule, not whether tasks get done.
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+The scheduler uses a **greedy algorithm**: it ranks all tasks once by slot → required status → priority → shortest duration, then schedules them in that order until the time budget runs out. A second pass then fills any leftover minutes with tasks that were initially skipped.
+
+The tradeoff is **speed and simplicity over optimal packing**. A greedy approach does not guarantee the best possible combination of tasks — for example, it might schedule a 30-minute optional task early and leave only 25 minutes for a 28-minute required task that arrives later in the sorted order. An optimal solution would require evaluating all possible subsets (a knapsack-style search), which becomes exponentially expensive as the task list grows.
+
+This tradeoff is reasonable for a pet care scheduler because the task lists are small — a typical owner manages fewer than 20 tasks across one or two pets. At that scale, the greedy result and the optimal result are almost always identical, and the cases where they differ (a required task getting bumped) are caught and surfaced explicitly by the conflict detection system rather than silently dropped. The owner sees a warning and can adjust. Simplicity and predictability matter more here than mathematical optimality: the schedule needs to be readable and explainable, not just maximally packed.
 
 ---
 
