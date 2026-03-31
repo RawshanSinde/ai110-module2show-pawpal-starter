@@ -2,6 +2,62 @@
 
 You are building **PawPal+**, a Streamlit app that helps a pet owner plan care tasks for their pet.
 
+## Demo
+
+### Owner & Pet Setup
+Enter the owner's name, daily time budget, and pet profile. Saving creates the Owner and Pet objects and displays a confirmation banner.
+
+<a href="/course_images/ai110/pawpal_owner_pet.png" target="_blank"><img src='/course_images/ai110/pawpal_owner_pet.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>
+
+### Adding & Managing Tasks
+Tasks are added with a title, category, duration, priority, time slot, and required flag. The task list displays sorted by time slot with **Edit** and **Del** buttons on every row.
+
+<a href="/course_images/ai110/pawpal_task_list.png" target="_blank"><img src='/course_images/ai110/pawpal_task_list.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>
+
+### Inline Task Editing
+Clicking **Edit** on any row opens a pre-populated form directly below the task list. Changes are saved in-place without losing the rest of the schedule state. Clicking **Cancel** dismisses the form without making any changes.
+
+<a href="/course_images/ai110/pawpal_edit_task.png" target="_blank"><img src='/course_images/ai110/pawpal_edit_task.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>
+
+### Schedule Output
+Generating a schedule shows budget metrics, any detected conflicts as warnings, a ranked table of scheduled tasks, and a plain-English explanation of all scheduling decisions.
+
+<a href="/course_images/ai110/pawpal_schedule.png" target="_blank"><img src='/course_images/ai110/pawpal_schedule.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>
+
+---
+
+## Features
+
+### Greedy budget scheduler with second-pass fill
+`Scheduler.generate_plan()` builds a daily schedule in two passes. The first pass iterates through tasks in ranked order and greedily schedules any task that fits within the owner's remaining time budget. Tasks that are too large to fit are set aside. The second pass revisits those skipped tasks and schedules any that now fit in the leftover budget — ensuring short tasks deferred by an early large task are not permanently dropped.
+
+### Multi-key task ranking
+`Scheduler.rank_tasks()` sorts tasks by four keys applied in order of significance: (1) time slot — morning before afternoon before evening before unslotted; (2) required status — required tasks before optional ones within the same slot; (3) priority level — high before medium before low; (4) duration — shorter tasks first when all other keys tie, maximising the number of tasks that fit within a limited budget.
+
+### Chronological slot sorting
+`Scheduler.sort_by_time()` provides a lightweight sort by time slot only, preserving the original relative order of tasks that share a slot (stable sort). Used in the UI to display task lists in chronological order without mixing in priority or required-status as secondary keys.
+
+### Composable task filtering
+Three filters can be chained in any combination:
+- `filter_by_status(tasks, include_completed)` — returns incomplete tasks by default; pass `include_completed=True` for a history view.
+- `filter_by_pet(tasks, pet_name)` — narrows the list to a single named pet (case-insensitive). Tasks without a pet backref are always excluded.
+- `filter_tasks(day_of_week, pet, include_completed)` — the main filter used by `generate_plan`. Applies recurrence rules, delegates to the two filters above, and soft-drops any optional task whose category matches the owner's `avoid_category` preference.
+
+### Automatic task recurrence
+Tasks support three recurrence modes: `one-time`, `daily`, and `weekly` (with a `recurrence_days` list). When `mark_complete()` is called on a `daily` or `weekly` task, a fresh incomplete copy is automatically added to the pet's task list so the next occurrence is ready without any manual intervention. The completed original is retained as a history record.
+
+### Inline task editing and deletion
+Every task row in the UI includes **Edit** and **Del** buttons. Clicking Edit stores a reference to the task object in session state and renders a pre-populated form inline — no page navigation required. Saving mutates the task object in-place so the updated values are immediately reflected in the task list and any subsequent schedule generation. Clicking Del removes the task from the pet's task list entirely and refreshes the view. If the task being deleted was also open in the edit form, the form is dismissed automatically.
+
+### Four-check conflict detection
+`Scheduler.detect_conflicts()` runs automatically inside `generate_plan()` and returns plain-English warning strings rather than raising exceptions, so the schedule is always produced even when problems are found:
+1. **Budget overrun** — required tasks whose combined duration exceeds the owner's daily time budget.
+2. **Slot capacity** — a named slot (morning / afternoon / evening) whose total assigned minutes exceeds a per-slot cap.
+3. **Duplicate titles** — the same task title registered more than once for the same pet.
+4. **Time conflicts** (via `detect_time_conflicts()`) — flags same-pet slot overlap (one animal cannot physically be in two activities at once) and cross-pet required overlap (the owner cannot attend to two animals' required needs simultaneously).
+
+---
+
 ## Scenario
 
 A busy pet owner needs help staying consistent with pet care. They want an assistant that can:

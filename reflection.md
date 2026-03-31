@@ -91,13 +91,21 @@ This tradeoff is reasonable for a pet care scheduler because the task lists are 
 
 **a. How you used AI**
 
-- How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
-- What kinds of prompts or questions were most helpful?
+I used AI throughout the project across several distinct phases rather than just for one type of task.
+
+During the **review and audit phase**, I asked the AI to read `pawpal_system.py` and list the core behaviors worth verifying before writing any tests. This surfaced behaviors I had implemented but hadn't consciously catalogued — like the second-pass budget fill in `generate_plan` and the silent no-op when `mark_complete` is called on a task with no pet set. Having those behaviors named explicitly made it much easier to write targeted tests.
+
+During the **test generation phase**, I gave the AI a specific list of three behaviors and asked it to generate tests for each one. Being specific about what to test (sorting correctness, recurrence logic, conflict detection) produced more useful output than asking broadly — the AI wrote tests that matched the actual method signatures rather than generic unit tests.
+
+During the **UI and display phase**, I asked the AI to update `app.py` to use `Scheduler` methods in the display logic and use Streamlit components like `st.success`, `st.warning`, and `st.metric`. The prompt that worked best here was combining the *what* (use these methods, use these components) with the *why* (make the output look professional).
+
+For the **UML reconciliation**, the most useful prompt was asking the AI to compare the diagram directly against the final code and list every gap. That framing — "does this still match?" — produced a specific diff rather than a general redraw.
 
 **b. Judgment and verification**
 
-- Describe one moment where you did not accept an AI suggestion as-is.
-- How did you evaluate or verify what the AI suggested?
+When the AI updated the task list display to use `sort_by_time()`, it initially kept `st.table` as the rendering component. I didn't accept that as the final version because `st.table` is fully static — there is no way to attach Edit or Delete buttons to its rows. I pushed back and asked for a per-row layout using `st.columns`, which is what made the edit and delete interaction possible. I verified the change worked by running the app and confirming the buttons appeared on each task row and that clicking Edit opened the inline form with pre-populated values.
+
+I also cross-checked the generated tests manually before running them. For the recurrence tests in particular, I read through `mark_complete()` in `pawpal_system.py` to confirm that the `if self.pet is not None` guard was actually there before writing the test that verifies it doesn't raise — I didn't want to write a test for behavior I had assumed rather than read.
 
 ---
 
@@ -105,13 +113,29 @@ This tradeoff is reasonable for a pet care scheduler because the task lists are 
 
 **a. What you tested**
 
-- What behaviors did you test?
-- Why were these tests important?
+The test suite covers five areas across 23 tests:
+
+1. **Task completion** — that tasks start incomplete, that `mark_complete` flips the flag, and that calling it twice is safe (idempotency). These matter because the filter logic in `filter_by_status` depends entirely on `task.completed` being accurate.
+
+2. **Task addition** — that new pets start with an empty task list, that adding tasks increments the count correctly, and that the task object is retrievable. These verify that the `pet.add_task()` and `pet.get_task_list()` contract holds before any scheduling logic runs on top of it.
+
+3. **Sorting correctness** — that `sort_by_time()` returns morning before afternoon before evening before unslotted, that tasks sharing a slot preserve their original order (stable sort), and that edge cases like a single task or an already-sorted list don't change anything. Sorting is the foundation of the ranked schedule display — if it's wrong, every schedule output is wrong.
+
+4. **Recurrence logic** — that completing a daily task adds a fresh incomplete copy to the pet's task list, that the original is retained as history, that one-time tasks don't spawn copies, and that completing a task without a pet set doesn't raise. Recurrence is the highest-risk behavior in the system because it mutates state as a side effect of marking completion — a subtle bug here would silently corrupt the task list.
+
+5. **Conflict detection** — that same-pet slot overlap is flagged, that different-slot tasks are not flagged, that cross-pet required overlap is caught, that optional overlap is not, and that unslotted tasks are never flagged. Conflict detection is what makes the scheduler trustworthy: without it, invalid schedules would be presented to the user without any indication that something is wrong.
 
 **b. Confidence**
 
-- How confident are you that your scheduler works correctly?
-- What edge cases would you test next if you had more time?
+I would rate my confidence at **4 out of 5**. The behaviors I tested are the most critical ones — sorting, recurrence mutation, and conflict detection — and all 23 tests pass cleanly. I'm confident those paths work correctly.
+
+The gap that keeps me from 5 stars: I haven't tested `generate_plan` end-to-end, which is where sorting, filtering, conflict detection, and budget scheduling all interact. A bug in the composition of those steps would not be caught by the individual unit tests. I also haven't tested the `avoid_category` preference filter, weekly recurrence day matching, or the second-pass fill logic in isolation.
+
+Edge cases I would test next with more time:
+- A required task whose duration alone exceeds the entire budget — it should be skipped with a conflict warning, not crash.
+- The second-pass fill: a task that is too large in pass one but fits exactly in the leftover budget after smaller tasks are scheduled.
+- `weekly` recurrence with an empty `recurrence_days` list — the current code falls through to `return True`, which is probably a bug.
+- Completing a daily task multiple times in sequence — each call spawns a new copy, so the task list grows unboundedly.
 
 ---
 
@@ -119,12 +143,18 @@ This tradeoff is reasonable for a pet care scheduler because the task lists are 
 
 **a. What went well**
 
-- What part of this project are you most satisfied with?
+I'm most satisfied with the conflict detection system. It was the part of the project where the design decision — returning warning strings instead of raising exceptions — had the most visible impact on user experience. Because `detect_conflicts()` never crashes the scheduler, the app always produces a plan even when the input is flawed, and the user sees exactly what went wrong in plain English. That felt like a real design choice rather than just implementation work.
+
+The UML reconciliation was also satisfying. Going back to the original diagram, comparing it line by line against the final code, and producing an updated version that accurately reflected six classes and their actual relationships gave me a clear picture of how much the design had evolved during the build.
 
 **b. What you would improve**
 
-- If you had another iteration, what would you improve or redesign?
+If I had another iteration, I would redesign the session state management in `app.py`. Right now, saving a new owner and pet resets the entire state — any tasks already added are lost. For a real app this would be a critical bug: a user who accidentally hits "Save Owner & Pet" twice loses all their work. I would add a confirmation step or separate the owner/pet profile from the task list so they can be updated independently.
+
+I would also add `weekly` recurrence support to the UI. The backend fully supports `recurrence="weekly"` with a `recurrence_days` list, but the add task form in `app.py` has no way to set recurrence mode or specify which days. That's a significant feature gap between what the system can do and what the interface exposes.
 
 **c. Key takeaway**
 
-- What is one important thing you learned about designing systems or working with AI on this project?
+The most important thing I learned is that **a clean class boundary is worth more than a clever algorithm**. The reason the scheduler was relatively easy to build incrementally — adding sorting, then filtering, then conflict detection without breaking earlier work — was that `Scheduler`, `Task`, `Pet`, and `DailyPlan` each had a single clear responsibility from the start. When I needed to add a new method, I knew exactly which class it belonged to. When I needed to write a test, I knew exactly what I was testing.
+
+Working with AI reinforced this: the AI was most useful when I asked it to work within an existing boundary ("add these methods to Scheduler", "update the display in app.py to use Scheduler's methods"). The moments where output needed the most correction were when the boundary was blurry — early in the project, before the class responsibilities were fully settled.

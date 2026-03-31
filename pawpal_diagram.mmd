@@ -3,8 +3,10 @@ classDiagram
         +String name
         +int available_minutes
         +dict preferences
+        +list pets
         +add_pet(pet) None
         +get_available_time() int
+        +get_all_tasks() list
     }
 
     class Pet {
@@ -12,6 +14,8 @@ classDiagram
         +String species
         +int age
         +list special_needs
+        +list tasks
+        +add_task(task) None
         +has_special_needs() bool
         +get_task_list() list
     }
@@ -23,18 +27,30 @@ classDiagram
         +String category
         +bool is_required
         +String notes
+        +bool completed
+        +String time_of_day
+        +String recurrence
+        +list recurrence_days
+        +Pet pet
+        +is_active_today(day_of_week) bool
+        +mark_complete() None
         +is_high_priority() bool
         +get_summary() str
     }
 
     class Scheduler {
         +Owner owner
-        +Pet pet
         +list tasks
-        +int available_minutes
-        +rank_tasks() list
+        +int remaining_minutes
+        +filter_by_status(tasks, include_completed) list
+        +filter_by_pet(tasks, pet_name) list
+        +filter_tasks(day_of_week, pet, include_completed) list
+        +sort_by_time(tasks) list
+        +rank_tasks(tasks) list
+        +detect_conflicts(tasks) list
+        +detect_time_conflicts(tasks) list
         +fits_in_budget(task) bool
-        +generate_plan() DailyPlan
+        +generate_plan(day_of_week) DailyPlan
         +explain_plan(plan) str
     }
 
@@ -43,13 +59,14 @@ classDiagram
         +list skipped_tasks
         +int total_duration
         +String explanation
+        +list conflicts
         +get_summary() str
         +display() None
     }
 
     Owner "1" --> "1..*" Pet : owns
     Pet "1" --> "0..*" Task : has
-    Scheduler --> Owner : uses
-    Scheduler --> Pet : uses
-    Scheduler --> Task : ranks
+    Task --> Pet : backref
+    Scheduler --> Owner : reads budget
+    Scheduler --> Task : filters and ranks
     Scheduler --> DailyPlan : produces
