@@ -79,3 +79,29 @@ When a `daily` or `weekly` task is marked complete via `mark_complete()`, a fres
    - *Cross-pet required overlap*: two different pets both have required tasks in the same slot, meaning the owner would need to be in two places at once.
 
 All warnings appear in `DailyPlan.conflicts` and are printed at the top of the schedule output.
+
+## Testing PawPal
+
+### Running the tests
+
+```bash
+python3 -m pytest tests/test_pawpal.py -v
+```
+
+### What the tests cover
+
+The test suite (23 tests) verifies three areas of core scheduling behavior:
+
+| Area | Tests | What is verified |
+|---|---|---|
+| **Task completion** | 3 | Tasks start incomplete; `mark_complete` flips the flag; calling it twice is safe. |
+| **Task addition** | 4 | New pets start with no tasks; adding tasks increases the count; tasks are retrievable by index. |
+| **Sorting correctness** | 5 | Tasks sort morning → afternoon → evening → unslotted; same-slot tasks preserve insertion order; single-task and already-sorted inputs are stable. |
+| **Recurrence logic** | 6 | Completing a `daily` task adds a fresh incomplete copy to the pet; the original is kept as history; `one-time` tasks do not spawn copies; completing without a pet set does not raise. |
+| **Conflict detection** | 5 | Same-pet tasks in the same slot are flagged; different slots are not; cross-pet required overlap is flagged; optional overlap is not; unslotted tasks are never flagged. |
+
+### Confidence Level
+
+★★★★☆ (4 / 5)
+
+The core scheduling behaviors — sorting, recurrence, and conflict detection — are well covered and all 23 tests pass. The rating stops short of 5 stars because the following areas are not yet tested: budget-constrained scheduling (greedy pass + second-pass fill), the `avoid_category` owner preference filter, `weekly` recurrence day matching, and the full `generate_plan` integration path. Adding tests for those scenarios would bring confidence to 5 stars.
